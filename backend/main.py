@@ -22,11 +22,12 @@ from agents.code_executor import CodeExecutor
 from agents.researcher import ResearcherAgent
 from pollinations_client import pollinations_client
 from llm_client import llm_client
+from search_counter import get_search_count
 
 app = FastAPI(
     title="PRISM Backend API",
-    description="Orchestrates a high-performance, pure Python multi-agent research workflow.",
-    version="2.4.1"
+    description="does stuff",
+    version="1.2.0"
 )
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 app.add_middleware(
@@ -132,6 +133,13 @@ async def research_event_stream(user_query: str, model_configs: Dict[str, ModelC
 
 @app.get("/health")
 async def health_check(): return {"status": "ok"}
+
+@app.get("/version")
+async def get_version(): return {"version": app.version}
+
+@app.get("/v1/status/google-api-usage")
+async def get_google_api_usage():
+    return {"count": get_search_count()}
 
 @app.post("/v1/config/keys")
 async def update_api_keys(keys: ApiKeys):

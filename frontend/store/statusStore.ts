@@ -14,6 +14,7 @@ interface StatusState {
   googleApiUsage: number;
   setBackendStatus: (isOnline: boolean, latency: number | null) => void;
   setLlmStatus: (isOnline: boolean, latency: number | null) => void;
+  setGoogleApiUsage: (count: number) => void;
   incrementGoogleApiUsage: (count: number) => void;
   resetGoogleApiUsage: () => void;
 }
@@ -44,6 +45,7 @@ export const useStatusStore = create<StatusState>()(
             latency: latency,
           },
         }),
+      setGoogleApiUsage: (count) => set({ googleApiUsage: count }),
       incrementGoogleApiUsage: (count) =>
         set((state) => ({ googleApiUsage: state.googleApiUsage + count })),
       resetGoogleApiUsage: () => set({ googleApiUsage: 0 }),

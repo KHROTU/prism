@@ -3,11 +3,11 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
-import { checkBackendHealth, checkLlmApiHealth } from "../lib/api";
+import { checkBackendHealth, checkLlmApiHealth, getGoogleApiUsage } from "../lib/api";
 import { useStatusStore } from "../store/statusStore";
 
 export function SystemStatusProvider() {
-  const { setBackendStatus, setLlmStatus } = useStatusStore();
+  const { setBackendStatus, setLlmStatus, setGoogleApiUsage } = useStatusStore();
   const wasBackendOffline = useRef(false);
   const wasLlmOffline = useRef(false);
 
@@ -42,20 +42,29 @@ export function SystemStatusProvider() {
 
     const checkBackend = createCheckService("Backend server", checkBackendHealth, setBackendStatus, wasBackendOffline);
     const checkLlm = createCheckService("Default LLM API", checkLlmApiHealth, setLlmStatus, wasLlmOffline);
-
-    const initialCheck = () => {
-      checkBackend();
-      checkLlm();
+    
+    const checkUsage = async () => {
+        try {
+            const { count } = await getGoogleApiUsage();
+            setGoogleApiUsage(count);
+        } catch {
+        }
     };
 
-    const initialTimeout = setTimeout(initialCheck, 1500);
-    const interval = setInterval(initialCheck, 30000);
+    const runAllChecks = () => {
+        checkBackend();
+        checkLlm();
+        checkUsage();
+    };
+
+    const initialTimeout = setTimeout(runAllChecks, 1500);
+    const interval = setInterval(runAllChecks, 30000);
 
     return () => {
       clearTimeout(initialTimeout);
       clearInterval(interval);
     };
-  }, [setBackendStatus, setLlmStatus]);
+  }, [setBackendStatus, setLlmStatus, setGoogleApiUsage]);
 
   return null;
 }

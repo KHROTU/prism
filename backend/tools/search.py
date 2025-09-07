@@ -4,6 +4,7 @@ import logging
 from dotenv import load_dotenv
 from .schemas import WebSearchResult, ImageSearchResult
 from exceptions import RateLimitException, ServiceUnavailableException
+from search_counter import increment_search_count
 
 load_dotenv()
 
@@ -19,6 +20,7 @@ API_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 
 async def web_search(query: str, max_results: int = 5, region: str = "us-en") -> list[WebSearchResult]:
     _check_api_credentials()
+    increment_search_count()
     logging.info(f"Performing async Google web search for: '{query}'")
     
     params = {
@@ -59,6 +61,7 @@ async def web_search(query: str, max_results: int = 5, region: str = "us-en") ->
 
 async def image_search(query: str, max_results: int = 4) -> list[ImageSearchResult]:
     _check_api_credentials()
+    increment_search_count()
     logging.info(f"Performing async Google image search for: '{query}'")
     
     params = {

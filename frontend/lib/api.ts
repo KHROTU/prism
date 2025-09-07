@@ -29,6 +29,25 @@ export async function checkLlmApiHealth(): Promise<{ isOnline: boolean; latency:
     }
 }
 
+export async function getGoogleApiUsage(): Promise<{ count: number }> {
+    const response = await axios.get(`${API_BASE_URL}/v1/status/google-api-usage`);
+    return response.data;
+}
+
+export async function getLocalVersion(): Promise<{ version: string }> {
+    const response = await axios.get(`${API_BASE_URL}/version`);
+    return response.data;
+}
+
+export async function getLatestVersion(): Promise<{ tag_name: string } | null> {
+    try {
+        const response = await axios.get("https://api.github.com/repos/KHROTU/prism/releases/latest");
+        return response.data;
+    } catch {
+        return null;
+    }
+}
+
 export async function updateApiKeys(keys: ApiKeys): Promise<{ message: string }> {
     const response = await axios.post(`${API_BASE_URL}/v1/config/keys`, keys);
     return response.data;
