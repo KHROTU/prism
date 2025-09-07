@@ -3,6 +3,7 @@ import { BrainCircuit, Calculator, Search, FileText } from "lucide-react";
 import { NodeContent } from "./NodeContent";
 import { motion, Variants } from "framer-motion";
 import { Badge } from "../ui/badge";
+import { cn } from "../../lib/utils";
 
 interface TimelineNodeProps {
   step: HistoryStep | CurrentStep;
@@ -12,13 +13,13 @@ interface TimelineNodeProps {
 const getAgentInfo = (agent: string) => {
   switch (agent) {
     case "ResearcherAgent":
-      return { icon: <Search className="w-5 h-5" />, color: "bg-blue-500" };
+      return { icon: <Search className="w-5 h-5" />, color: "bg-blue-500", name: "Researcher" };
     case "CodeExecutor":
-      return { icon: <Calculator className="w-5 h-5" />, color: "bg-green-500" };
+      return { icon: <Calculator className="w-5 h-5" />, color: "bg-green-500", name: "Code Executor" };
     case "LeadSynthesizer":
-        return { icon: <FileText className="w-5 h-5" />, color: "bg-purple-500" };
+        return { icon: <FileText className="w-5 h-5" />, color: "bg-purple-500", name: "Synthesizer" };
     default:
-      return { icon: <BrainCircuit className="w-5 h-5" />, color: "bg-gray-500" };
+      return { icon: <BrainCircuit className="w-5 h-5" />, color: "bg-gray-500", name: "Orchestrator" };
   }
 };
 
@@ -39,22 +40,25 @@ export function TimelineNode({ step, isCurrent }: TimelineNodeProps) {
 
   return (
     <motion.div className="relative" variants={nodeVariants}>
-      <div className={`absolute -left-[30px] top-0 h-4 w-4 rounded-full ${agentInfo.color} ring-8 ring-background ${isCurrent ? 'animate-pulse' : ''}`}></div>
-      <div className="ml-4">
+      <div className={cn(
+          "absolute -left-[30px] top-0 h-4 w-4 rounded-full ring-8 ring-background", 
+          agentInfo.color,
+          isCurrent && 'animate-pulse'
+        )}>
+      </div>
+      <div className="ml-4 space-y-3 rounded-lg border border-border/80 bg-background/50 p-4">
         <div className="flex items-center gap-3">
-            <span className={`flex items-center justify-center w-8 h-8 rounded-full ${agentInfo.color}/10 text-${agentInfo.color}`}>
-                <div className={`${agentInfo.color} p-1.5 rounded-full text-primary-foreground`}>
-                    {agentInfo.icon}
-                </div>
-            </span>
-            <Badge variant="secondary" className="font-semibold">{step.agent}</Badge>
+          <div className={cn("p-1.5 rounded-full text-primary-foreground", agentInfo.color)}>
+              {agentInfo.icon}
+          </div>
+          <Badge variant="secondary" className="font-semibold">{agentInfo.name}</Badge>
         </div>
-        <div className="mt-3 pl-2">
-            <p className="text-muted-foreground italic text-sm mb-4 border-l-2 border-border pl-3">
+        <div>
+          <p className="text-muted-foreground italic text-sm border-l-2 border-border/80 pl-3">
             {step.prompt}
-            </p>
-            <NodeContent output={output} details={details} />
+          </p>
         </div>
+        <NodeContent output={output} details={details} />
       </div>
     </motion.div>
   );

@@ -21,6 +21,9 @@ export const metadata: Metadata = {
     default: "PRISM | Autonomous Research",
   },
   description: "Your autonomous AI research team. Go from a single question to a comprehensive report.",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

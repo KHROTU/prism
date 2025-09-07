@@ -26,7 +26,7 @@ from llm_client import llm_client
 app = FastAPI(
     title="PRISM Backend API",
     description="Orchestrates a high-performance, pure Python multi-agent research workflow.",
-    version="2.4.0"
+    version="2.4.1"
 )
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 app.add_middleware(
@@ -107,6 +107,7 @@ async def research_event_stream(user_query: str, model_configs: Dict[str, ModelC
 
             if agent_runner:
                 async for event in agent_runner:
+                    yield json.dumps(event)
                     if event.get("event") == "agent_stop":
                         output_data = event.get("data", {})
                         if next_step.agent == "ResearcherAgent":
@@ -114,8 +115,6 @@ async def research_event_stream(user_query: str, model_configs: Dict[str, ModelC
                         elif next_step.agent == "CodeExecutor":
                             agent_output = CodeExecutorOutput.model_validate(output_data)
                         break
-                    else:
-                        yield json.dumps(event)
 
             if agent_output:
                 history_entry = {"task_id": next_step.task_id, "agent": next_step.agent, "prompt": next_step.prompt, "output": agent_output}

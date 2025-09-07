@@ -25,7 +25,9 @@ async def read_website(url: str) -> WebReaderResult:
             logging.info(f"PDF content type detected. Parsing with pypdf: {url}")
             pdf_stream = io.BytesIO(response.content)
             reader = PdfReader(pdf_stream)
-            title = reader.metadata.title or "PDF Document"
+            title = "PDF Document"
+            if reader.metadata and reader.metadata.title:
+                title = reader.metadata.title
             content_text = "\n\n".join(page.extract_text() for page in reader.pages if page.extract_text())
             return WebReaderResult(url=url, title=title, content=content_text.strip())
         else:

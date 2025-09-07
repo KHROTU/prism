@@ -1,5 +1,4 @@
 import { HistoryStepOutput, SummarizedContent } from "../../lib/types";
-import { Card, CardContent } from "../ui/card";
 import { Separator } from "../ui/separator";
 import { CheckCircle, Loader2 } from "lucide-react";
 
@@ -14,18 +13,17 @@ interface NodeContentProps {
 }
 
 const DetailItem = ({ children }: { children: React.ReactNode }) => (
-    <div className="p-3 bg-background/50 rounded-md border border-border/60">{children}</div>
+    <div className="p-3 bg-secondary/50 rounded-md border border-border/60">{children}</div>
 );
 
 export function NodeContent({ output, details }: NodeContentProps) {
-  const hasDetails = Object.values(details).some(val => val !== undefined && val !== null && val.length !== 0);
-  const hasOutput = Object.values(output).some(val => val !== undefined && val !== null && val.length !== 0);
+  const hasDetails = details && Object.values(details).some(val => val !== undefined && val !== null && (Array.isArray(val) ? val.length !== 0 : true));
+  const hasOutput = output && Object.values(output).some(val => val !== undefined && val !== null && (Array.isArray(val) ? val.length !== 0 : true));
 
   if (!hasDetails && !hasOutput) return null;
 
   return (
-    <Card className="bg-secondary/50 border-border/60">
-      <CardContent className="pt-6 space-y-4">
+    <div className="space-y-3 pt-3 border-t border-border/60">
         {details.queries && (
           <DetailItem>
             <h4 className="font-semibold text-xs mb-2 text-muted-foreground uppercase tracking-wider">Generated Queries</h4>
@@ -78,7 +76,7 @@ export function NodeContent({ output, details }: NodeContentProps) {
         {details.code && (
              <DetailItem>
                 <h4 className="font-semibold text-xs mb-2 text-muted-foreground uppercase tracking-wider">Executing Code</h4>
-                <pre className="p-3 bg-background/50 rounded-md border border-border/60 text-xs overflow-x-auto font-mono">
+                <pre className="p-3 bg-background rounded-md border border-border/60 text-xs overflow-x-auto font-mono">
                     <code>{details.code}</code>
                 </pre>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
@@ -92,14 +90,13 @@ export function NodeContent({ output, details }: NodeContentProps) {
           <div className="font-mono text-sm">
              <DetailItem>
                 <h4 className="font-sans font-semibold text-xs mb-2 text-muted-foreground uppercase tracking-wider">Executed Code</h4>
-                <pre className="p-2 bg-background/50 rounded-md border border-border/60 text-xs overflow-x-auto"><code>{output.code}</code></pre>
+                <pre className="p-2 bg-background rounded-md border border-border/60 text-xs overflow-x-auto"><code>{output.code}</code></pre>
                 <Separator className="my-3 bg-border/60" />
                 <h4 className="font-sans font-semibold text-xs mb-2 text-muted-foreground uppercase tracking-wider">Result</h4>
-                <pre className="p-2 bg-background/50 rounded-md border border-border/60"><code>{output.result}</code></pre>
+                <pre className="p-2 bg-background rounded-md border border-border/60"><code>{output.result}</code></pre>
              </DetailItem>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

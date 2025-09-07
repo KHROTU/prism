@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { ArrowLeft, Clipboard, FileDown, Loader2, ServerCrash } from "lucide-react";
 import { useHistoryStore } from "../store/historyStore";
 import { useSettingsStore } from "../store/settingsStore";
+import { useStatusStore } from "../store/statusStore";
 import { Timeline } from "./research/Timeline";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -52,7 +53,7 @@ function FinalReportDisplay({ reportData }: { reportData: FinalReport }) {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.5 }}>
             <Card className="overflow-hidden border-2 border-primary/20 shadow-xl shadow-primary/10">
                 <div ref={reportContentRef} className="bg-card">
-                    <CardHeader>
+                    <CardHeader className="relative">
                         <CardTitle className="text-2xl">Final Research Report</CardTitle>
                         <div className="absolute top-4 right-4 flex gap-2">
                             <Button variant="secondary" size="sm" onClick={handleCopyToClipboard} disabled={isExporting}><Clipboard className="h-3 w-3 mr-2" />{copied ? "Copied!" : "Copy"}</Button>
@@ -80,8 +81,10 @@ export function ResearchDisplay() {
   const router = useRouter();
   const params = useParams();
   const researchId = Array.isArray(params.id) ? params.id[0] : params.id;
+  
   const { getResearchById, saveResearch, tempQuery } = useHistoryStore();
   const { modelConfigs } = useSettingsStore();
+  const { incrementGoogleApiUsage, resetGoogleApiUsage } = useStatusStore();
 
   const [researchHistory, setResearchHistory] = useState<HistoryStep[]>([]);
   const [currentStep, setCurrentStep] = useState<CurrentStep | null>(null);
@@ -90,28 +93,30 @@ export function ResearchDisplay() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState(loadingMessages['initial']);
-
-  const researchHistoryRef = useRef<HistoryStep[]>([]);
-  useEffect(() => { researchHistoryRef.current = researchHistory; }, [researchHistory]);
-
+  
   const handleStreamEvent = useCallback((event: StreamEvent) => {
     switch (event.event) {
         case 'agent_start': {
-            if (currentStep) {
-                const finalOutput: HistoryStepOutput = {
-                    summaries: currentStep.details.summaries,
-                    code: currentStep.details.code,
-                };
-                const completedStep: HistoryStep = { ...currentStep, output: finalOutput };
-                setResearchHistory(prev => [...prev, completedStep]);
-            }
             const data = event.data as AgentStartData;
             setCurrentStep({ ...data, details: {} });
             setLoadingMessage(loadingMessages[data.agent] || "Processing...");
             break;
         }
+        case 'agent_stop': {
+            const outputData = event.data as HistoryStepOutput & { task_id: number };
+            setCurrentStep(prev => {
+                if (prev && prev.task_id === outputData.task_id) {
+                    const completedStep: HistoryStep = { ...prev, output: outputData };
+                    setResearchHistory(history => [...history, completedStep]);
+                    return null;
+                }
+                return prev;
+            });
+            break;
+        }
         case 'queries_generated': {
             const data = event.data as { queries: string[] };
+            incrementGoogleApiUsage(data.queries.length);
             setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, queries: data.queries } } : null);
             break;
         }
@@ -122,7 +127,20 @@ export function ResearchDisplay() {
         }
         case 'summary_complete': {
             const data = event.data as SummarizedContent;
-            setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, summaries: [...(prev.details.summaries || []), data] } } : null);
+            setCurrentStep(prev => {
+                if (!prev) return null;
+                const allSummaries = prev.details.summaries || [];
+                if (allSummaries.some(s => s.url === data.url)) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    details: {
+                        ...prev.details,
+                        summaries: [...allSummaries, data]
+                    }
+                };
+            });
             break;
         }
         case 'code_executing': {
@@ -131,11 +149,12 @@ export function ResearchDisplay() {
             break;
         }
     }
-  }, [currentStep]);
+  }, [incrementGoogleApiUsage]);
 
   useEffect(() => {
     if (!researchId) return;
     const existingResearch = getResearchById(researchId);
+
     if (existingResearch) {
       setResearchHistory(existingResearch.researchData.research_history);
       setFinalReport(existingResearch.researchData.final_report);
@@ -145,38 +164,51 @@ export function ResearchDisplay() {
       const newQuery = tempQuery[researchId];
       if (!newQuery) { router.replace("/history"); return; }
       
+      const abortController = new AbortController();
+
       setQuery(newQuery);
       setResearchHistory([]);
       setCurrentStep(null);
       setFinalReport(null);
       setError(null);
       setIsLoading(true);
+      resetGoogleApiUsage();
 
       startResearchStream(newQuery, modelConfigs, {
         onEvent: handleStreamEvent,
         onComplete: (report) => {
-            if (currentStep) {
-                const finalOutput: HistoryStepOutput = { summaries: currentStep.details.summaries, code: currentStep.details.code };
-                const completedStep: HistoryStep = { ...currentStep, output: finalOutput };
-                researchHistoryRef.current = [...researchHistoryRef.current, completedStep];
-                setResearchHistory(researchHistoryRef.current);
-            }
-            setCurrentStep(null);
             setFinalReport(report);
             setIsLoading(false);
-            const finalData: ResearchResponse = { research_history: researchHistoryRef.current, final_report: report };
-            saveResearch(researchId, newQuery, finalData);
+            setCurrentStep(null);
         },
         onError: (err) => {
-            setError(`Research failed: ${err}. Please check API keys and backend status.`);
+            setError(`Research failed: ${err}. Please check API keys and backend status. For better reliability, consider adding a custom API key in Settings.`);
             setIsLoading(false);
             setCurrentStep(null);
         }
-      });
+      }, abortController.signal);
+
+      return () => {
+        abortController.abort();
+      };
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [researchId]);
   
+  useEffect(() => {
+    if (finalReport && researchId && !getResearchById(researchId)) {
+        const queryToSave = tempQuery[researchId] || query;
+        if(queryToSave) {
+            const finalData: ResearchResponse = {
+                research_history: researchHistory,
+                final_report: finalReport,
+            };
+            saveResearch(researchId, queryToSave, finalData);
+        }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finalReport, researchId, researchHistory, query, tempQuery]);
+
   useEffect(() => { document.title = query ? `Research: "${query}"` : "Research in Progress..."; }, [query]);
 
   return (

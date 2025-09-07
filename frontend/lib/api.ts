@@ -1,5 +1,5 @@
 import axios from "axios";
-import { FinalReport, SummarizedContent, AgentStartData, ModelConfig, AgentName } from "./types";
+import { FinalReport, SummarizedContent, AgentStartData, ModelConfig, AgentName, HistoryStepOutput } from "./types";
 
 const API_BASE_URL = "http://localhost:8000";
 const LLM_API_BASE_URL = "https://text.pollinations.ai";
@@ -9,21 +9,23 @@ interface ApiKeys {
   google_cx_id: string;
 }
 
-export async function checkBackendHealth(): Promise<boolean> {
+export async function checkBackendHealth(): Promise<{ isOnline: boolean; latency: number | null }> {
+    const startTime = Date.now();
     try {
-        await axios.get(`${API_BASE_URL}/health`, { timeout: 2000 });
-        return true;
+        await axios.get(`${API_BASE_URL}/health`, { timeout: 3000 });
+        return { isOnline: true, latency: Date.now() - startTime };
     } catch {
-        return false;
+        return { isOnline: false, latency: null };
     }
 }
 
-export async function checkLlmApiHealth(): Promise<boolean> {
+export async function checkLlmApiHealth(): Promise<{ isOnline: boolean; latency: number | null }> {
+    const startTime = Date.now();
     try {
-        await axios.get(`${LLM_API_BASE_URL}/models`, { timeout: 3000 });
-        return true;
+        await axios.get(`${LLM_API_BASE_URL}/models`, { timeout: 5000 });
+        return { isOnline: true, latency: Date.now() - startTime };
     } catch {
-        return false;
+        return { isOnline: false, latency: null };
     }
 }
 
@@ -39,7 +41,8 @@ type StreamEventData =
     | SummarizedContent
     | { code: string }
     | { detail: string }
-    | { message: string };
+    | { message: string }
+    | HistoryStepOutput;
 
 export interface StreamEvent {
     event: string;
@@ -52,12 +55,13 @@ interface StreamCallbacks {
     onError: (error: string) => void;
 }
 
-export async function startResearchStream(query: string, modelConfigs: Record<AgentName, ModelConfig>, callbacks: StreamCallbacks): Promise<void> {
+export async function startResearchStream(query: string, modelConfigs: Record<AgentName, ModelConfig>, callbacks: StreamCallbacks, signal: AbortSignal): Promise<void> {
     try {
         const response = await fetch(`${API_BASE_URL}/v1/prism/research/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query, model_configs: modelConfigs }),
+            signal,
         });
 
         if (!response.ok || !response.body) {
@@ -95,6 +99,10 @@ export async function startResearchStream(query: string, modelConfigs: Record<Ag
             }
         }
     } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            console.log("Research stream aborted.");
+            return;
+        }
         const errorMessage = error instanceof Error ? error.message : "An unknown network error occurred.";
         callbacks.onError(errorMessage);
     }

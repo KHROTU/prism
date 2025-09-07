@@ -4,76 +4,58 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { checkBackendHealth, checkLlmApiHealth } from "../lib/api";
-
-const BACKEND_TOAST_ID = "backend-status-toast";
-const LLM_TOAST_ID = "llm-status-toast";
+import { useStatusStore } from "../store/statusStore";
 
 export function SystemStatusProvider() {
-  const isBackendOffline = useRef(false);
-  const isLlmOffline = useRef(false);
-
-  const createCheckService = (
-    serviceName: string,
-    checkFn: () => Promise<boolean>,
-    toastId: string,
-    isOfflineRef: React.MutableRefObject<boolean>
-  ) => {
-    const check = async () => {
-      const isOnline = await checkFn();
-
-      if (isOnline) {
-        if (isOfflineRef.current) {
-          toast.success(`${serviceName} connected.`, {
-            id: toastId,
-            duration: 3000,
-          });
-        } else {
-          toast.dismiss(toastId);
-        }
-        isOfflineRef.current = false;
-      } else {
-        toast.error(`${serviceName} is offline.`, {
-          id: toastId,
-          duration: Infinity,
-          action: (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                toast.loading(`Checking ${serviceName} status...`, { id: toastId, duration: 5000 });
-                check();
-              }}
-            >
-              Retry
-            </Button>
-          ),
-        });
-        isOfflineRef.current = true;
-      }
-    };
-    return check;
-  };
-
-  const checkBackend = createCheckService("Backend server", checkBackendHealth, BACKEND_TOAST_ID, isBackendOffline);
-  const checkLlm = createCheckService("LLM API", checkLlmApiHealth, LLM_TOAST_ID, isLlmOffline);
+  const { setBackendStatus, setLlmStatus } = useStatusStore();
+  const wasBackendOffline = useRef(false);
+  const wasLlmOffline = useRef(false);
 
   useEffect(() => {
-    const initialCheckTimeout = setTimeout(() => {
-      checkBackend();
-      checkLlm();
-    }, 1500);
+    const createCheckService = (
+      serviceName: string,
+      checkFn: () => Promise<{ isOnline: boolean; latency: number | null }>,
+      setStatus: (isOnline: boolean, latency: number | null) => void,
+      wasOfflineRef: React.MutableRefObject<boolean>
+    ) => {
+      return async () => {
+        const { isOnline, latency } = await checkFn();
+        setStatus(isOnline, latency);
 
-    const interval = setInterval(() => {
+        if (isOnline) {
+          if (wasOfflineRef.current) {
+            toast.success(`${serviceName} reconnected.`, { id: serviceName, duration: 3000 });
+          }
+          wasOfflineRef.current = false;
+        } else {
+          if (!wasOfflineRef.current) {
+            toast.error(`${serviceName} is offline.`, {
+              id: serviceName,
+              duration: Infinity,
+              action: <Button variant="secondary" size="sm" onClick={() => toast.dismiss(serviceName)}>Dismiss</Button>,
+            });
+          }
+          wasOfflineRef.current = true;
+        }
+      };
+    };
+
+    const checkBackend = createCheckService("Backend server", checkBackendHealth, setBackendStatus, wasBackendOffline);
+    const checkLlm = createCheckService("Default LLM API", checkLlmApiHealth, setLlmStatus, wasLlmOffline);
+
+    const initialCheck = () => {
       checkBackend();
       checkLlm();
-    }, 30000);
+    };
+
+    const initialTimeout = setTimeout(initialCheck, 1500);
+    const interval = setInterval(initialCheck, 30000);
 
     return () => {
-      clearTimeout(initialCheckTimeout);
+      clearTimeout(initialTimeout);
       clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setBackendStatus, setLlmStatus]);
 
   return null;
 }

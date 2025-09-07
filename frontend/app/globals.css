@@ -21,6 +21,9 @@
   --input: 240 3.7% 15.9%;
   --ring: 210 40% 98%;
   --radius: 0.75rem;
+  --status-online: 142 71% 45%;
+  --status-degraded: 48 96% 53%;
+  --status-offline: 0 84% 60%;
 }
 
 @theme {
@@ -71,7 +74,11 @@ body {
     z-index: -10;
     overflow: hidden;
     background-color: hsl(var(--background));
-    background-image: radial-gradient(ellipse 80% 80% at 50% -20%,rgba(120,119,198,0.3),hsla(0,0%,100%,0));
+    background-image: 
+        radial-gradient(ellipse 80% 80% at 50% -20%,rgba(120,119,198,0.2),hsla(0,0%,100%,0)),
+        repeating-conic-gradient(from 45deg, hsl(var(--background)) 0% 25%, hsl(var(--border) / 0.1) 25% 50%);
+    background-size: 100% 100%, 16px 16px;
+    opacity: 0.5;
 }
 
 .prose-invert a {
