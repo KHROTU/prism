@@ -8,9 +8,9 @@ import { Label } from "../../../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { updateApiKeys } from "../../../lib/api";
 import { motion } from "framer-motion";
-import { AgentName } from "../../../lib/types";
+import { AgentModelName, ClarificationMode } from "../../../lib/types";
 
-const agentDisplayNames: Record<AgentName, { name: string, description: string }> = {
+const agentDisplayNames: Record<AgentModelName, { name: string, description: string }> = {
   "prism-reasoning-core": { name: "Orchestrator & Synthesizer", description: "High-level reasoning, planning, and final report generation." },
   "prism-researcher-default": { name: "Researcher (Query Generation)", description: "Generates search queries based on the research task." },
   "prism-summarizer-large-context": { name: "Researcher (Summarization)", description: "Reads and summarizes web pages. Needs a large context window." },
@@ -27,14 +27,14 @@ const providers = [
 ];
 
 const providerDetails: Record<string, { defaultModel: string, baseUrl?: string }> = {
-    openai: { defaultModel: "gpt-5-2025-08-07" },
-    anthropic: { defaultModel: "claude-sonnet-4-20250514" },
-    google: { defaultModel: "gemini-2.5-pro" },
-    openrouter: { defaultModel: "moonshotai/kimi-k2-0905" },
+    openai: { defaultModel: "gpt-4-turbo" },
+    anthropic: { defaultModel: "claude-3-sonnet-20240229" },
+    google: { defaultModel: "gemini-1.5-pro-latest" },
+    openrouter: { defaultModel: "openrouter/auto" },
     openai_compatible: { defaultModel: "" }
 };
 
-function AgentModelConfig({ agentName }: { agentName: AgentName }) {
+function AgentModelConfig({ agentName }: { agentName: AgentModelName }) {
   const { modelConfigs, setModelConfig } = useSettingsStore();
   const config = modelConfigs[agentName];
 
@@ -101,7 +101,7 @@ function AgentModelConfig({ agentName }: { agentName: AgentName }) {
 }
 
 export default function SettingsPage() {
-  const { googleApiKey, googleCxId, setGoogleApiKey, setGoogleCxId } = useSettingsStore();
+  const { googleApiKey, googleCxId, setGoogleApiKey, setGoogleCxId, clarificationMode, setClarificationMode } = useSettingsStore();
   const [apiKey, setApiKey] = useState(googleApiKey);
   const [cxId, setCxId] = useState(googleCxId);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -163,13 +163,41 @@ export default function SettingsPage() {
         <motion.div variants={FADE_IN}>
           <Card>
             <CardHeader>
+              <CardTitle>Research Strategy</CardTitle>
+              <CardDescription>Configure how PRISM handles ambiguous user queries.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Clarification Mode</Label>
+                <select
+                  value={clarificationMode}
+                  onChange={(e) => setClarificationMode(e.target.value as ClarificationMode)}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>option]:bg-background"
+                >
+                  <option value="agent">Let Agent Decide</option>
+                  <option value="always_ask">Always Ask for Clarification</option>
+                  <option value="never_ask">Never Ask (Make Assumptions)</option>
+                </select>
+                <p className="text-xs text-muted-foreground pt-1">
+                  {clarificationMode === 'agent' && 'The AI will decide whether to ask a clarifying question or make a reasonable assumption.'}
+                  {clarificationMode === 'always_ask' && 'The AI will always stop and ask for more details if your query is ambiguous.'}
+                  {clarificationMode === 'never_ask' && 'The AI will never ask for clarification and will instead make its best assumption to proceed.'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={FADE_IN}>
+          <Card>
+            <CardHeader>
               <CardTitle>Model Configuration</CardTitle>
               <CardDescription>
                 Configure the large language models used by each agent. Select &apos;Default&apos; to use the free, built-in provider.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                {(Object.keys(agentDisplayNames) as AgentName[]).map(agentName => (
+                {(Object.keys(agentDisplayNames) as AgentModelName[]).map(agentName => (
                   <AgentModelConfig key={agentName} agentName={agentName} />
                 ))}
             </CardContent>

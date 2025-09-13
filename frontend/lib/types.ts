@@ -28,20 +28,28 @@ export interface HistoryStepOutput {
     result?: string;
 }
 
+export type AgentType = 
+    | "ResearcherAgent"
+    | "LeadSynthesizer"
+    | "CodeExecutor"
+    | "UserClarificationAgent";
+
 export interface HistoryStep {
+    uniqueId: string;
     task_id: number;
-    agent: string;
+    agent: AgentType;
     prompt: string;
     output: HistoryStepOutput;
 }
 
 export interface AgentStartData {
     task_id: number;
-    agent: string;
+    agent: AgentType;
     prompt: string;
 }
 
 export interface CurrentStep extends AgentStartData {
+    uniqueId: string;
     details: {
         queries?: string[];
         urls?: string[];
@@ -57,8 +65,10 @@ export interface ModelConfig {
     baseUrl?: string;
 }
 
-export type AgentName = 
+export type AgentModelName = 
     | "prism-reasoning-core"
     | "prism-researcher-default"
     | "prism-summarizer-large-context"
     | "prism-coder-agent";
+
+export type ClarificationMode = "agent" | "always_ask" | "never_ask";

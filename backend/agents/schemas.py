@@ -4,7 +4,8 @@ from typing import List, Literal, Optional, Union
 AgentType = Literal[
     "ResearcherAgent",
     "LeadSynthesizer",
-    "CodeExecutor"
+    "CodeExecutor",
+    "UserClarificationAgent"
 ]
 
 class PlanStep(BaseModel):

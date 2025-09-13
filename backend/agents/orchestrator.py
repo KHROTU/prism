@@ -7,10 +7,10 @@ from .schemas import PlanStep, ResearcherOutput, CodeExecutorOutput
 from .utils import extract_json_from_string
 
 class ChiefOrchestrator:
-    async def get_next_step(self, user_query: str, history: List[Dict[str, Any]], model_config: Dict[str, Any]) -> PlanStep:
+    async def get_next_step(self, user_query: str, history: List[Dict[str, Any]], model_config: Dict[str, Any], clarification_mode: str) -> PlanStep:
         logging.info("Orchestrator: Determining next step...")
         
-        prompt = self._get_planner_prompt(user_query, history)
+        prompt = self._get_planner_prompt(user_query, history, clarification_mode)
         messages = [{"role": "user", "content": prompt}]
         
         try:
@@ -22,8 +22,15 @@ class ChiefOrchestrator:
         except Exception as e:
             raise Exception(f"The orchestrator LLM failed to determine the next step: {e}")
 
-    def _get_planner_prompt(self, user_query: str, history: List[Dict[str, Any]]) -> str:
+    def _get_planner_prompt(self, user_query: str, history: List[Dict[str, Any]], clarification_mode: str) -> str:
         history_str = self._format_history(history)
+        
+        clarification_logic = {
+            "always_ask": "Your top priority is clarity. If the user's query is ambiguous in any way (e.g., vague terms, undefined scope), your first and only step MUST be to use `UserClarificationAgent` to ask a specific question that will resolve the ambiguity.",
+            "never_ask": "You MUST NOT use `UserClarificationAgent`. If the query is ambiguous, you must make a reasonable, well-informed assumption and state it clearly in the prompt for the next agent. For example, for 'impact of AI', assume 'economic impact of AI in the United States' and use that in the `ResearcherAgent` prompt.",
+            "agent": "Analyze the user's query for ambiguity. If it is too ambiguous to proceed effectively (e.g., 'tell me about things'), use `UserClarificationAgent` to ask for more detail. If it is only slightly ambiguous, make a reasonable assumption and state it in the prompt for the next agent (e.g., for a prompt about 'the impact of AI', you could create a `ResearcherAgent` task with the prompt 'Research the economic impact of AI in the United States')."
+        }
+
         return f"""
 You are a world-class research director. Your task is to analyze a user's query and a history of previous research steps to decide the single next action to take.
 
@@ -37,15 +44,17 @@ You are a world-class research director. Your task is to analyze a user's query 
 **Available Agents:**
 - "ResearcherAgent": Use this to find new information on the web. This agent performs a search, reads the content, and returns summaries all in one step.
 - "CodeExecutor": Use this for precise calculations.
+- "UserClarificationAgent": Use this to ask the user a clarifying question if their query is too ambiguous to proceed. This should be your first step if needed.
 - "LeadSynthesizer": Use this ONLY when all research is complete.
 
 **Your Task:**
-Based on the user query and the detailed history, decide the single next step. Your output MUST be a single, valid JSON object for the PlanStep.
+Based on the user query, the detailed history, and the clarification rule below, decide the single next step. Your output MUST be a single, valid JSON object for the PlanStep.
 
 **CRITICAL DECISION LOGIC:**
-1.  **Is more information needed?** If the history does not contain the answer, use `ResearcherAgent` to find it.
-2.  **Is a calculation needed AND the data is available?** If the history now contains the specific numbers needed for a calculation, you MUST use `CodeExecutor`. Your prompt for the `CodeExecutor` must contain the actual numbers you extracted from the history.
-3.  **Is all research complete?** If you have gathered all necessary facts and performed all calculations, the final step is `LeadSynthesizer`.
+1.  **Handle Ambiguity (Clarification Rule: {clarification_mode}):** {clarification_logic[clarification_mode]}
+2.  **Is more information needed?** If the history does not contain the answer, use `ResearcherAgent` to find it. For subjective or controversial topics, frame the prompt to seek balanced viewpoints.
+3.  **Is a calculation needed AND the data is available?** If the history now contains the specific numbers needed for a calculation, you MUST use `CodeExecutor`. Your prompt for the `CodeExecutor` must contain the actual numbers you extracted from the history.
+4.  **Is all research complete?** If you have gathered all necessary facts and performed all calculations, the final step is `LeadSynthesizer`.
 
 **Example `CodeExecutor` Task:**
 If the history contains "Mars orbital period is 687 Earth days" and "Jupiter's is 4333 days", your JSON output should be:
@@ -87,6 +96,8 @@ If the history contains "Mars orbital period is 687 Earth days" and "Jupiter's i
                 entry += f"\\n  - Found {len(summaries)} relevant sources:\\n  " + "\\n  ".join(summaries)
             elif isinstance(output, CodeExecutorOutput):
                 entry += f"\\n  - Executed code and got result: {output.result}"
+            elif agent == "UserClarificationAgent" and isinstance(output, dict) and "result" in output:
+                entry += f"\\n  - User provided clarification: {output['result']}"
             
             formatted_history.append(entry)
             

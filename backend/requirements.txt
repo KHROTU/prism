@@ -13,3 +13,5 @@ openai==1.106.1
 anthropic==0.66.0
 google-genai==1.33.0
 google-api-core==2.25.1
+numpy==2.3.3
+svgwrite==1.4.3

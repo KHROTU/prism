@@ -88,6 +88,6 @@ class ResearcherAgent:
                 logging.error(f"ResearcherAgent: Failed to process URL {url}. Error: {e}")
                 return None
 
-    def _get_query_generation_prompt(self, research_prompt: str) -> str: return f'You are a search strategist. Generate a JSON object with a "queries" key, containing a list of 3-5 diverse search queries for the given task.\n\nTASK: "{research_prompt}"'
+    def _get_query_generation_prompt(self, research_prompt: str) -> str: return f'You are a search strategist. Generate a JSON object with a "queries" key, containing a list of 3-5 diverse search queries for the given task. If the task involves a subjective, controversial, or multifaceted topic, ensure your queries cover multiple perspectives (e.g., "pros of X", "cons of X", "social impact of X", "economic impact of X").\n\nTASK: "{research_prompt}"'
     
     def _get_summarization_prompt(self, research_prompt: str, article_text: str) -> str: return f'You are a Research Analyst. Read the article and determine its relevance to the research prompt. Your output must be a single JSON object with two keys: "summary" (a concise, fact-based summary) and "relevance_score" (an integer from 0-10).\n\nPROMPT: "{research_prompt}"\n\nARTICLE: "{article_text[:15000]}"'

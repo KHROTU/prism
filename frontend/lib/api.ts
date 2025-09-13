@@ -1,5 +1,5 @@
 import axios from "axios";
-import { FinalReport, SummarizedContent, AgentStartData, ModelConfig, AgentName, HistoryStepOutput } from "./types";
+import { FinalReport, SummarizedContent, AgentStartData, ModelConfig, AgentModelName, HistoryStep, ClarificationMode } from "./types";
 
 const API_BASE_URL = "http://localhost:8000";
 const LLM_API_BASE_URL = "https://text.pollinations.ai";
@@ -61,7 +61,7 @@ type StreamEventData =
     | { code: string }
     | { detail: string }
     | { message: string }
-    | HistoryStepOutput;
+    | HistoryStep;
 
 export interface StreamEvent {
     event: string;
@@ -74,12 +74,24 @@ interface StreamCallbacks {
     onError: (error: string) => void;
 }
 
-export async function startResearchStream(query: string, modelConfigs: Record<AgentName, ModelConfig>, callbacks: StreamCallbacks, signal: AbortSignal): Promise<void> {
+export async function startResearchStream(
+    query: string, 
+    modelConfigs: Record<AgentModelName, ModelConfig>, 
+    clarificationMode: ClarificationMode, 
+    callbacks: StreamCallbacks, 
+    signal: AbortSignal,
+    researchHistory?: HistoryStep[]
+): Promise<void> {
     try {
         const response = await fetch(`${API_BASE_URL}/v1/prism/research/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, model_configs: modelConfigs }),
+            body: JSON.stringify({ 
+                query, 
+                model_configs: modelConfigs, 
+                clarification_mode: clarificationMode,
+                research_history: researchHistory 
+            }),
             signal,
         });
 

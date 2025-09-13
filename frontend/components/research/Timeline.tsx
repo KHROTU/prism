@@ -30,11 +30,11 @@ export function Timeline({ history, currentStep, isLoading, loadingMessage }: Ti
         animate="visible"
       >
         {history.map((step) => (
-          <TimelineNode key={`history-${step.task_id}`} step={step} isCurrent={false} />
+          <TimelineNode key={step.uniqueId} step={step} isCurrent={false} />
         ))}
 
         {currentStep && (
-            <TimelineNode key={`current-${currentStep.task_id}`} step={currentStep} isCurrent={true} />
+            <TimelineNode key={currentStep.uniqueId} step={currentStep} isCurrent={true} />
         )}
         
         {isLoading && !currentStep && <ResearchLoader message={loadingMessage} />}

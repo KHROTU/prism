@@ -1,5 +1,5 @@
 import { HistoryStep, CurrentStep } from "../../lib/types";
-import { BrainCircuit, Calculator, Search, FileText } from "lucide-react";
+import { BrainCircuit, Calculator, Search, FileText, HelpCircle } from "lucide-react";
 import { NodeContent } from "./NodeContent";
 import { motion, Variants } from "framer-motion";
 import { Badge } from "../ui/badge";
@@ -18,6 +18,8 @@ const getAgentInfo = (agent: string) => {
       return { icon: <Calculator className="w-5 h-5" />, color: "bg-green-500", name: "Code Executor" };
     case "LeadSynthesizer":
         return { icon: <FileText className="w-5 h-5" />, color: "bg-purple-500", name: "Synthesizer" };
+    case "UserClarificationAgent":
+        return { icon: <HelpCircle className="w-5 h-5" />, color: "bg-yellow-500", name: "Clarification" };
     default:
       return { icon: <BrainCircuit className="w-5 h-5" />, color: "bg-gray-500", name: "Orchestrator" };
   }

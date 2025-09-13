@@ -6,6 +6,7 @@ import logging
 import io
 from pypdf import PdfReader
 from fake_useragent import UserAgent
+import asyncio
 
 ua = UserAgent()
 
@@ -23,13 +24,17 @@ async def read_website(url: str) -> WebReaderResult:
 
         if is_pdf:
             logging.info(f"PDF content type detected. Parsing with pypdf: {url}")
-            pdf_stream = io.BytesIO(response.content)
-            reader = PdfReader(pdf_stream)
-            title = "PDF Document"
-            if reader.metadata and reader.metadata.title:
-                title = reader.metadata.title
-            content_text = "\n\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-            return WebReaderResult(url=url, title=title, content=content_text.strip())
+            
+            def sync_parse_pdf(pdf_content: bytes) -> WebReaderResult:
+                pdf_stream = io.BytesIO(pdf_content)
+                reader = PdfReader(pdf_stream)
+                title = "PDF Document"
+                if reader.metadata and reader.metadata.title:
+                    title = reader.metadata.title
+                content_text = "\n\n".join(page.extract_text() for page in reader.pages if page.extract_text())
+                return WebReaderResult(url=url, title=title, content=content_text.strip())
+                
+            return await asyncio.to_thread(sync_parse_pdf, response.content)
         else:
             logging.info(f"HTML content type detected. Parsing with readability: {url}")
             doc = Document(response.text)

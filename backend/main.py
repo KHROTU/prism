@@ -3,7 +3,7 @@ import json
 from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 import logging
 import sys
 import os
@@ -58,9 +58,11 @@ class ModelConfig(BaseModel):
 class ResearchRequest(BaseModel):
     query: str
     model_configs: Dict[str, ModelConfig]
+    clarification_mode: Literal["agent", "always_ask", "never_ask"] = "agent"
+    research_history: Optional[List[Dict[str, Any]]] = None
 
-async def research_event_stream(user_query: str, model_configs: Dict[str, ModelConfig]):
-    research_history = []
+async def research_event_stream(user_query: str, model_configs: Dict[str, ModelConfig], clarification_mode: str, research_history: Optional[List[Dict[str, Any]]] = None):
+    current_research_history = research_history if research_history is not None else []
     max_steps = 10
 
     final_configs = {}
@@ -76,8 +78,12 @@ async def research_event_stream(user_query: str, model_configs: Dict[str, ModelC
         logging.info("--- STARTING DYNAMIC AGENT EXECUTION (STREAM) ---")
         for i in range(max_steps):
             yield json.dumps({"event": "log", "data": {"message": "Orchestrator is planning the next step..."}})
-            next_step: PlanStep = await orchestrator.get_next_step(user_query, research_history, final_configs["prism-reasoning-core"])
+            next_step: PlanStep = await orchestrator.get_next_step(user_query, current_research_history, final_configs["prism-reasoning-core"], clarification_mode)
             yield json.dumps({"event": "agent_start", "data": next_step.model_dump()})
+
+            if next_step.agent == "UserClarificationAgent":
+                logging.info("Orchestrator requires user clarification. Pausing stream.")
+                return
 
             agent_output = None
             agent_runner = None
@@ -88,7 +94,7 @@ async def research_event_stream(user_query: str, model_configs: Dict[str, ModelC
                 agent_runner = code_executor.run(next_step.task_id, next_step.prompt, final_configs["prism-coder-agent"])
             elif next_step.agent == "LeadSynthesizer":
                 all_context_parts = []
-                for hist_item in research_history:
+                for hist_item in current_research_history:
                     output = hist_item.get("output")
                     if isinstance(output, ResearcherOutput):
                         summaries_str = "\n".join([f"Source: {s.url}\nTitle: {s.title}\nSummary: {s.summary}" for s in output.summaries])
@@ -119,8 +125,8 @@ async def research_event_stream(user_query: str, model_configs: Dict[str, ModelC
 
             if agent_output:
                 history_entry = {"task_id": next_step.task_id, "agent": next_step.agent, "prompt": next_step.prompt, "output": agent_output}
-                research_history.append(history_entry)
-            elif next_step.agent != "LeadSynthesizer":
+                current_research_history.append(history_entry)
+            elif next_step.agent not in ["LeadSynthesizer", "UserClarificationAgent"]:
                 raise Exception(f"Agent {next_step.agent} failed to produce output.")
 
         raise Exception("Research process exceeded maximum step limit.")
@@ -190,7 +196,7 @@ async def use_tool(tool_name: str, payload: Dict[str, Any] = Body(...)):
 @app.post("/v1/prism/research/stream")
 async def start_research_stream(request: ResearchRequest):
     async def event_generator():
-        async for event_data in research_event_stream(request.query, request.model_configs):
+        async for event_data in research_event_stream(request.query, request.model_configs, request.clarification_mode, request.research_history):
             yield f"data: {event_data}\n\n"
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { startResearchStream, StreamEvent } from "../lib/api";
 import { FinalReport, HistoryStep, ResearchResponse, CurrentStep, HistoryStepOutput, AgentStartData, SummarizedContent } from "../lib/types";
 import { Button } from "./ui/button";
-import { ArrowLeft, Clipboard, FileDown, Loader2, ServerCrash } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clipboard, FileDown, Loader2, ServerCrash, HelpCircle } from "lucide-react";
 import { useHistoryStore } from "../store/historyStore";
 import { useSettingsStore } from "../store/settingsStore";
 import { useStatusStore } from "../store/statusStore";
@@ -13,10 +13,12 @@ import { Timeline } from "./research/Timeline";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import Image from "next/image";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { Textarea } from "./ui/textarea";
+import { v4 as uuidv4 } from "uuid";
 
 const loadingMessages: Record<string, string> = {
     'ResearcherAgent': 'Gathering intelligence...',
@@ -40,7 +42,11 @@ function FinalReportDisplay({ reportData }: { reportData: FinalReport }) {
       if (!reportContentRef.current) return;
       setIsExporting(true);
       try {
-        const canvas = await html2canvas(reportContentRef.current, { scale: 2, backgroundColor: "hsl(240 10% 3.9%)" });
+        const canvas = await html2canvas(reportContentRef.current, { 
+            scale: 2, 
+            backgroundColor: "hsl(240 10% 3.9%)",
+            useCORS: true
+        });
         const imgData = canvas.toDataURL("image/png");
         const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [canvas.width, canvas.height] });
         pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
@@ -83,7 +89,7 @@ export function ResearchDisplay() {
   const researchId = Array.isArray(params.id) ? params.id[0] : params.id;
   
   const { getResearchById, saveResearch, tempQuery } = useHistoryStore();
-  const { modelConfigs } = useSettingsStore();
+  const { modelConfigs, clarificationMode } = useSettingsStore();
   const { incrementGoogleApiUsage, resetGoogleApiUsage } = useStatusStore();
 
   const [researchHistory, setResearchHistory] = useState<HistoryStep[]>([]);
@@ -92,90 +98,79 @@ export function ResearchDisplay() {
   const [query, setQuery] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [clarificationQuestion, setClarificationQuestion] = useState<string | null>(null);
+  const [clarificationInput, setClarificationInput] = useState("");
   const [loadingMessage, setLoadingMessage] = useState(loadingMessages['initial']);
   
-  const handleStreamEvent = useCallback((event: StreamEvent) => {
-    switch (event.event) {
-        case 'agent_start': {
-            const data = event.data as AgentStartData;
-            setCurrentStep({ ...data, details: {} });
-            setLoadingMessage(loadingMessages[data.agent] || "Processing...");
-            break;
-        }
-        case 'agent_stop': {
-            const outputData = event.data as HistoryStepOutput & { task_id: number };
-            setCurrentStep(prev => {
-                if (prev && prev.task_id === outputData.task_id) {
-                    const completedStep: HistoryStep = { ...prev, output: outputData };
-                    setResearchHistory(history => [...history, completedStep]);
-                    return null;
-                }
-                return prev;
-            });
-            break;
-        }
-        case 'queries_generated': {
-            const data = event.data as { queries: string[] };
-            incrementGoogleApiUsage(data.queries.length);
-            setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, queries: data.queries } } : null);
-            break;
-        }
-        case 'urls_found': {
-            const data = event.data as { urls: string[] };
-            setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, urls: data.urls, summaries: [] } } : null);
-            break;
-        }
-        case 'summary_complete': {
-            const data = event.data as SummarizedContent;
-            setCurrentStep(prev => {
-                if (!prev) return null;
-                const allSummaries = prev.details.summaries || [];
-                if (allSummaries.some(s => s.url === data.url)) {
-                    return prev;
-                }
-                return {
-                    ...prev,
-                    details: {
-                        ...prev.details,
-                        summaries: [...allSummaries, data]
-                    }
-                };
-            });
-            break;
-        }
-        case 'code_executing': {
-            const data = event.data as { code: string };
-            setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, code: data.code } } : null);
-            break;
-        }
-    }
-  }, [incrementGoogleApiUsage]);
-
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const streamEventProcessorRef = useRef<((event: StreamEvent) => void) | null>(null);
+  
   useEffect(() => {
-    if (!researchId) return;
-    const existingResearch = getResearchById(researchId);
+    streamEventProcessorRef.current = (event: StreamEvent) => {
+        switch (event.event) {
+            case 'agent_start': {
+                const data = event.data as AgentStartData;
+                const stepWithId: CurrentStep = { ...data, details: {}, uniqueId: uuidv4() };
+                if (data.agent === 'UserClarificationAgent') {
+                    setCurrentStep(stepWithId);
+                    setClarificationQuestion(data.prompt);
+                    setIsLoading(false);
+                } else {
+                    setCurrentStep(stepWithId);
+                    setLoadingMessage(loadingMessages[data.agent] || "Processing...");
+                }
+                break;
+            }
+            case 'agent_stop': {
+                const outputData = event.data as HistoryStepOutput & { task_id: number };
+                setCurrentStep(prev => {
+                    if (prev && prev.task_id === outputData.task_id) {
+                        const completedStep: HistoryStep = { ...prev, output: outputData };
+                        setResearchHistory(history => [...history, completedStep]);
+                        return null;
+                    }
+                    return prev;
+                });
+                break;
+            }
+            case 'queries_generated': {
+                const data = event.data as { queries: string[] };
+                incrementGoogleApiUsage(data.queries.length);
+                setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, queries: data.queries } } : null);
+                break;
+            }
+            case 'urls_found': {
+                const data = event.data as { urls: string[] };
+                setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, urls: data.urls, summaries: [] } } : null);
+                break;
+            }
+            case 'summary_complete': {
+                const data = event.data as SummarizedContent;
+                setCurrentStep(prev => {
+                    if (!prev) return null;
+                    const allSummaries = prev.details.summaries || [];
+                    if (allSummaries.some(s => s.url === data.url)) return prev;
+                    return { ...prev, details: { ...prev.details, summaries: [...allSummaries, data] } };
+                });
+                break;
+            }
+            case 'code_executing': {
+                const data = event.data as { code: string };
+                setCurrentStep(prev => prev ? { ...prev, details: { ...prev.details, code: data.code } } : null);
+                break;
+            }
+        }
+    };
+  });
 
-    if (existingResearch) {
-      setResearchHistory(existingResearch.researchData.research_history);
-      setFinalReport(existingResearch.researchData.final_report);
-      setQuery(existingResearch.query);
-      setIsLoading(false);
-    } else {
-      const newQuery = tempQuery[researchId];
-      if (!newQuery) { router.replace("/history"); return; }
-      
-      const abortController = new AbortController();
+  const runStream = useCallback(async (currentQuery: string, historyToContinue?: HistoryStep[]) => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
-      setQuery(newQuery);
-      setResearchHistory([]);
-      setCurrentStep(null);
-      setFinalReport(null);
-      setError(null);
-      setIsLoading(true);
-      resetGoogleApiUsage();
-
-      startResearchStream(newQuery, modelConfigs, {
-        onEvent: handleStreamEvent,
+    startResearchStream(currentQuery, modelConfigs, clarificationMode, {
+        onEvent: (event) => streamEventProcessorRef.current?.(event),
         onComplete: (report) => {
             setFinalReport(report);
             setIsLoading(false);
@@ -186,30 +181,75 @@ export function ResearchDisplay() {
             setIsLoading(false);
             setCurrentStep(null);
         }
-      }, abortController.signal);
+    }, abortControllerRef.current.signal, historyToContinue);
+  }, [modelConfigs, clarificationMode]);
 
-      return () => {
-        abortController.abort();
-      };
+  useEffect(() => {
+    if (!researchId) return;
+
+    const existingResearch = getResearchById(researchId);
+    if (existingResearch) {
+        setResearchHistory(existingResearch.researchData.research_history);
+        setFinalReport(existingResearch.researchData.final_report);
+        setQuery(existingResearch.query);
+        setIsLoading(false);
+    } else {
+        const newQuery = tempQuery[researchId];
+        if (!newQuery) { router.replace("/history"); return; }
+        setQuery(newQuery);
+        setResearchHistory([]);
+        setCurrentStep(null);
+        setFinalReport(null);
+        setError(null);
+        setClarificationQuestion(null);
+        setIsLoading(true);
+        resetGoogleApiUsage();
+        runStream(newQuery);
     }
+
+    return () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [researchId]);
+  }, [researchId, runStream]);
   
   useEffect(() => {
     if (finalReport && researchId && !getResearchById(researchId)) {
         const queryToSave = tempQuery[researchId] || query;
         if(queryToSave) {
-            const finalData: ResearchResponse = {
-                research_history: researchHistory,
-                final_report: finalReport,
-            };
+            const finalData: ResearchResponse = { research_history: researchHistory, final_report: finalReport };
             saveResearch(researchId, queryToSave, finalData);
         }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finalReport, researchId, researchHistory, query, tempQuery]);
+  }, [finalReport, researchId, researchHistory, query]);
 
   useEffect(() => { document.title = query ? `Research: "${query}"` : "Research in Progress..."; }, [query]);
+
+  const handleClarificationSubmit = () => {
+    if (!clarificationInput.trim() || !currentStep || !clarificationQuestion) return;
+
+    const refinedQuery = `Original research question: "${query}"\n\nIn response to your clarification request "${clarificationQuestion}", here is my input: "${clarificationInput.trim()}"`;
+
+    const userResponseStep: HistoryStep = {
+        uniqueId: currentStep.uniqueId,
+        task_id: currentStep.task_id,
+        agent: 'UserClarificationAgent',
+        prompt: currentStep.prompt,
+        output: { result: clarificationInput.trim() }
+    };
+    
+    const updatedHistory = [...researchHistory, userResponseStep];
+    setResearchHistory(updatedHistory);
+    setCurrentStep(null);
+    setClarificationQuestion(null);
+    setClarificationInput("");
+    setIsLoading(true);
+    
+    runStream(refinedQuery, updatedHistory);
+  };
 
   return (
     <>
@@ -223,6 +263,36 @@ export function ResearchDisplay() {
       <main className="container mx-auto p-4 md:p-8 max-w-4xl">
         <div className="space-y-12">
             <Timeline history={researchHistory} currentStep={currentStep} isLoading={isLoading} loadingMessage={loadingMessage} />
+            {clarificationQuestion && (
+                <motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}}>
+                    <Card className="bg-blue-950/50 border-blue-500/30">
+                        <CardHeader className="flex-row items-center gap-4">
+                            <HelpCircle className="w-8 h-8 text-blue-400"/>
+                            <div className="flex-grow">
+                                <CardTitle className="text-blue-300">Clarification Needed</CardTitle>
+                                <CardDescription className="text-blue-300/70">{clarificationQuestion}</CardDescription>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <Textarea 
+                                placeholder="Provide your clarification here..." 
+                                value={clarificationInput}
+                                onChange={(e) => setClarificationInput(e.target.value)}
+                                className="bg-background/80"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleClarificationSubmit();
+                                    }
+                                }}
+                            />
+                            <Button onClick={handleClarificationSubmit} disabled={!clarificationInput.trim()}>
+                                Continue Research <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </motion.div>
+            )}
             {error && (
                 <motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}}>
                     <Card className="bg-destructive/10 border-destructive/30">
